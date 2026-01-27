@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { DeleteResult, Model } from 'mongoose';
 import { parse } from 'csv-parse/sync';
 import { CsvUser, CsvUserDocument } from './entity/csv-user.entity';
+import { Csv, CsvError, CsvResponse } from 'src/types/csv';
 
 @Injectable()
 export class CsvUploaderService {
@@ -11,20 +12,27 @@ export class CsvUploaderService {
     private readonly csvUserModel: Model<CsvUserDocument>,
   ) {}
 
-  async processCsv(file?: Express.Multer.File) {
+  async processCsv(file?: Express.Multer.File): Promise<CsvResponse> {
     if (!file) {
       throw new BadRequestException('Archivo CSV no proporcionado');
     }
 
     const rawContent = file.buffer.toString('utf-8');
     const records = parse(rawContent, {
-      columns: true,
+      columns: (headers: string[]) =>
+        headers.map((header, index) => {
+          const normalized = header.replace(/^\uFEFF/, '').trim().toLowerCase();
+          return normalized || `__ignored_${index}`;
+        }),
       skip_empty_lines: true,
       trim: true,
+      bom: true,
+      delimiter: [',', ';', '\t'],
+      relax_column_count: true,
     }) as Array<Record<string, string>>;
 
-    const success: Array<{ id: string; name: string; email: string; age: number }> = [];
-    const errors: Array<{ row: number; details: Record<string, string> }> = [];
+    const success: Array<Csv> = [];
+    const errors: Array<CsvError> = [];
 
     for (let index = 0; index < records.length; index += 1) {
       const rowNumber = index + 2;
@@ -46,7 +54,7 @@ export class CsvUploaderService {
       }
 
       const age = Number(ageRaw);
-      if (!ageRaw) {
+      if (ageRaw === undefined || ageRaw === null || ageRaw === '') {
         details.age = "El campo 'age' es requerido.";
       } else if (!Number.isInteger(age) || age <= 0) {
         details.age = "El campo 'age' debe ser un número positivo.";
@@ -58,17 +66,17 @@ export class CsvUploaderService {
       }
 
       try {
-        const created = await this.csvUserModel.create({
+        const createdCsv = await this.csvUserModel.create({
           name,
           email,
           age,
         });
 
         success.push({
-          id: created._id.toString(),
-          name: created.name,
-          email: created.email,
-          age: created.age,
+          id: createdCsv._id.toString(),
+          name: createdCsv.name,
+          email: createdCsv.email,
+          age: createdCsv.age,
         });
       } catch (dbError: any) {
         errors.push({
@@ -78,8 +86,24 @@ export class CsvUploaderService {
           },
         });
       }
-    }
 
-    return { success, errors };
+    }
+    return { success: success, errors };
+  }
+
+  async getUploadedFiles(): Promise<CsvUserDocument[]> {
+    const files = await this.csvUserModel.find().sort({ createdAt: -1 });
+    if (!files || files.length === 0) {
+      throw new NotFoundException('No se encontraron archivos subidos');
+    }
+    return files;
+  }
+
+  async deleteUploadedFiles(): Promise<DeleteResult> {
+    const deletedFiles = await this.csvUserModel.deleteMany({});
+    if (!deletedFiles || deletedFiles.deletedCount === 0) {
+      throw new NotFoundException('No se encontraron archivos subidos');
+    }
+    return deletedFiles;
   }
 }
