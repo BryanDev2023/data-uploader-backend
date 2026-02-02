@@ -8,7 +8,7 @@ import config from './core/config/environment';
 
 @Module({
   imports: [
-    MongooseModule.forRoot(config.mongodb, { dbName: config.dbName }),
+    MongooseModule.forRoot(config.mongodb),
     AuthModule,
     CsvUploaderModule,
   ],
