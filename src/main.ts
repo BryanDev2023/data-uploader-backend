@@ -23,7 +23,7 @@ async function bootstrap() {
     { fallbackOnErrors: true }
   );
 
-  app.setGlobalPrefix("api");
+  app.setGlobalPrefix("api/v1");
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -45,8 +45,8 @@ async function bootstrap() {
   });
 
   const configDocument = new DocumentBuilder()
-    .setTitle("Data Uploader API")
-    .setDescription("API for data uploader")
+    .setTitle("Data Uploader API v1")
+    .setDescription("API for data uploader v1")
     .setVersion("1.0")
     .addBearerAuth()
     .build();
