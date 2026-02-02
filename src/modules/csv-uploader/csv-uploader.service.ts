@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { DeleteResult, Model } from 'mongoose';
 import { parse } from 'csv-parse/sync';
 import { CsvUser, CsvUserDocument } from './entity/csv-user.entity';
+import { CsvUploadError, CsvUploadErrorDocument } from './entity/csv-upload-error.entity';
 import { Csv, CsvError, CsvResponse } from 'src/types/csv';
 
 @Injectable()
@@ -12,6 +13,8 @@ export class CsvUploaderService {
   constructor(
     @InjectModel(CsvUser.name)
     private readonly csvUserModel: Model<CsvUserDocument>,
+    @InjectModel(CsvUploadError.name)
+    private readonly csvUploadErrorModel: Model<CsvUploadErrorDocument>,
   ) { }
 
   async processCsv(file?: Express.Multer.File): Promise<CsvResponse> {
@@ -21,19 +24,35 @@ export class CsvUploaderService {
 
     this.logger.log(`Procesando archivo CSV: ${file.originalname}`);
 
-    const rawContent = file.buffer.toString('utf-8');
-    const records = parse(rawContent, {
-      columns: (headers: string[]) =>
-        headers.map((header, index) => {
-          const normalized = header.replace(/^\uFEFF/, '').trim().toLowerCase();
-          return normalized || `__ignored_${index}`;
-        }),
-      skip_empty_lines: true,
-      trim: true,
-      bom: true,
-      delimiter: [',', ';', '\t'],
-      relax_column_count: true,
-    }) as Array<Record<string, string>>;
+    let records: Array<Record<string, string>>;
+    try {
+      const rawContent = file.buffer.toString('utf-8');
+      records = parse(rawContent, {
+        columns: (headers: string[]) =>
+          headers.map((header, index) => {
+            const normalized = header.replace(/^\uFEFF/, '').trim().toLowerCase();
+            return normalized || `__ignored_${index}`;
+          }),
+        skip_empty_lines: true,
+        trim: true,
+        bom: true,
+        delimiter: [',', ';', '\t'],
+        relax_column_count: true,
+      }) as Array<Record<string, string>>;
+    } catch (parseError: any) {
+      await this.csvUploadErrorModel.create({
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        status: 'failed',
+        totalRows: 0,
+        successCount: 0,
+        errorCount: 0,
+        errors: [],
+        parseError: parseError?.message || 'Error al procesar el CSV.',
+      });
+      throw new BadRequestException('Archivo CSV inválido');
+    }
 
     const success: Array<Csv> = [];
     const errors: Array<CsvError> = [];
@@ -92,6 +111,22 @@ export class CsvUploaderService {
       }
 
     }
+    if (errors.length > 0) {
+      await this.csvUploadErrorModel.create({
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        status: success.length > 0 ? 'partial' : 'failed',
+        totalRows: records.length,
+        successCount: success.length,
+        errorCount: errors.length,
+        errors: errors.map((error) => ({
+          row: error.row,
+          details: error.details,
+        })),
+      });
+    }
+
     this.logger.log(`Archivo CSV procesado exitosamente: ${file.originalname}`);
     this.logger.log(`Registros exitosos: ${success.length}`);
     this.logger.log(`Registros con errores: ${errors.length}`);
@@ -132,6 +167,15 @@ export class CsvUploaderService {
     }
     this.logger.log(`Archivo eliminado: ${deletedFile.name}`);
     return { acknowledged: true, deletedCount: 1 };
+  }
+
+  async getFailedUploads(): Promise<CsvUploadErrorDocument[]> {
+    const failedUploads = await this.csvUploadErrorModel.find().sort({ created_at: -1 });
+    if (!failedUploads || failedUploads.length === 0) {
+      throw new NotFoundException('No se encontraron archivos con errores');
+    }
+    this.logger.log(`Archivos con errores: ${failedUploads.length}`);
+    return failedUploads;
   }
 
 }

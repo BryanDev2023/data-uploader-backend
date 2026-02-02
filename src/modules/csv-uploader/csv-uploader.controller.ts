@@ -48,6 +48,16 @@ export class CsvUploaderController {
     }
   }
 
+  @Get('failed-uploads')
+  async getFailedUploads(): Promise<ApiResponse> {
+    try {
+      const result = await this.csvUploaderService.getFailedUploads();
+      return ApiResponse.success('Archivos con errores', result);
+    } catch (error) {
+      return ApiResponse.error(error);
+    }
+  }
+
   @Delete('delete-all-files')
   async deleteUploadedFiles(): Promise<ApiResponse> {
     try {
