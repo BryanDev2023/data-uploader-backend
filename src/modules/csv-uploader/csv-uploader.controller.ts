@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UploadedFile, UseGuards, UseInterceptors, Res, Delete } from '@nestjs/common';
+import { Controller, Get, Post, UploadedFile, UseGuards, UseInterceptors, Res, Delete, Param } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CsvUploaderService } from './csv-uploader.service';
@@ -33,6 +33,16 @@ export class CsvUploaderController {
     try {
       const result = await this.csvUploaderService.getUploadedFiles();
       return ApiResponse.success('Archivos subidos', result);
+    } catch (error) {
+      return ApiResponse.error(error);
+    }
+  }
+
+  @Get('get-file/:id')
+  async getUploadedFileById(@Param('id') id: string): Promise<ApiResponse> {
+    try {
+      const result = await this.csvUploaderService.getUploadedFileById(id);
+      return ApiResponse.success('Archivo obtenido', result);
     } catch (error) {
       return ApiResponse.error(error);
     }

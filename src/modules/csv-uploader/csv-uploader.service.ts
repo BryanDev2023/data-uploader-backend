@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { DeleteResult, Model } from 'mongoose';
 import { parse } from 'csv-parse/sync';
@@ -7,15 +7,19 @@ import { Csv, CsvError, CsvResponse } from 'src/types/csv';
 
 @Injectable()
 export class CsvUploaderService {
+  private readonly logger = new Logger(CsvUploaderService.name);
+
   constructor(
     @InjectModel(CsvUser.name)
     private readonly csvUserModel: Model<CsvUserDocument>,
-  ) {}
+  ) { }
 
   async processCsv(file?: Express.Multer.File): Promise<CsvResponse> {
     if (!file) {
       throw new BadRequestException('Archivo CSV no proporcionado');
     }
+
+    this.logger.log(`Procesando archivo CSV: ${file.originalname}`);
 
     const rawContent = file.buffer.toString('utf-8');
     const records = parse(rawContent, {
@@ -88,6 +92,9 @@ export class CsvUploaderService {
       }
 
     }
+    this.logger.log(`Archivo CSV procesado exitosamente: ${file.originalname}`);
+    this.logger.log(`Registros exitosos: ${success.length}`);
+    this.logger.log(`Registros con errores: ${errors.length}`);
     return { success: success, errors };
   }
 
@@ -96,6 +103,7 @@ export class CsvUploaderService {
     if (!files || files.length === 0) {
       throw new NotFoundException('No se encontraron archivos subidos');
     }
+    this.logger.log(`Archivos subidos: ${files.length}`);
     return files;
   }
 
@@ -104,6 +112,26 @@ export class CsvUploaderService {
     if (!deletedFiles || deletedFiles.deletedCount === 0) {
       throw new NotFoundException('No se encontraron archivos subidos');
     }
+    this.logger.log(`Archivos eliminados: ${deletedFiles.deletedCount}`);
     return deletedFiles;
   }
+
+  async getUploadedFileById(id: string): Promise<CsvUserDocument> {
+    const file = await this.csvUserModel.findById(id);
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado');
+    }
+    this.logger.log(`Archivo encontrado: ${file.name}`);
+    return file;
+  }
+  
+  async deleteUploadedFileById(id: string): Promise<DeleteResult> {
+    const deletedFile = await this.csvUserModel.findByIdAndDelete(id);
+    if (!deletedFile) {
+      throw new NotFoundException('Archivo no encontrado');
+    }
+    this.logger.log(`Archivo eliminado: ${deletedFile.name}`);
+    return { acknowledged: true, deletedCount: 1 };
+  }
+
 }
