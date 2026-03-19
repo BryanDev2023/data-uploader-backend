@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UploadedFile, UseGuards, UseInterceptors, Res, Delete, Param } from '@nestjs/common';
+import { Body, Controller, Get, Post, UploadedFile, UseGuards, UseInterceptors, Res, Delete, Param, Patch } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CsvUploaderService } from './csv-uploader.service';
@@ -53,6 +53,29 @@ export class CsvUploaderController {
     try {
       const result = await this.csvUploaderService.getFailedUploads();
       return ApiResponse.success('Archivos con errores', result);
+    } catch (error) {
+      return ApiResponse.error(error);
+    }
+  }
+
+  @Patch(':id')
+  async updateUploadedFileById(
+    @Param('id') id: string,
+    @Body() body: { name?: string; email?: string; age?: number | string },
+  ): Promise<ApiResponse> {
+    try {
+      const result = await this.csvUploaderService.updateUploadedFileById(id, body);
+      return ApiResponse.success('Archivo actualizado', result);
+    } catch (error) {
+      return ApiResponse.error(error);
+    }
+  }
+
+  @Delete(':id')
+  async deleteUploadedFileById(@Param('id') id: string): Promise<ApiResponse> {
+    try {
+      const result = await this.csvUploaderService.deleteUploadedFileById(id);
+      return ApiResponse.success('Archivo eliminado', result);
     } catch (error) {
       return ApiResponse.error(error);
     }

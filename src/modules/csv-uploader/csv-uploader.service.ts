@@ -9,6 +9,7 @@ import { Csv, CsvError, CsvResponse } from 'src/types/csv';
 @Injectable()
 export class CsvUploaderService {
   private readonly logger = new Logger(CsvUploaderService.name);
+  private readonly emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   constructor(
     @InjectModel(CsvUser.name)
@@ -159,7 +160,58 @@ export class CsvUploaderService {
     this.logger.log(`Archivo encontrado: ${file.name}`);
     return file;
   }
-  
+
+  async updateUploadedFileById(
+    id: string,
+    payload: { name?: string; email?: string; age?: number | string },
+  ): Promise<CsvUserDocument> {
+    const updates: { name?: string; email?: string; age?: number } = {};
+
+    if (payload.name !== undefined) {
+      const name = String(payload.name).trim();
+      if (!name) {
+        throw new BadRequestException("El campo 'name' no puede estar vacío.");
+      }
+      updates.name = name;
+    }
+
+    if (payload.email !== undefined) {
+      const email = String(payload.email).trim();
+      if (!email) {
+        throw new BadRequestException("El campo 'email' no puede estar vacío.");
+      }
+      if (!this.emailRegex.test(email)) {
+        throw new BadRequestException("El formato del campo 'email' es inválido.");
+      }
+      updates.email = email;
+    }
+
+    if (payload.age !== undefined) {
+      const age = Number(payload.age);
+      if (!Number.isInteger(age) || age <= 0) {
+        throw new BadRequestException("El campo 'age' debe ser un número positivo.");
+      }
+      updates.age = age;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw new BadRequestException('Debes enviar al menos un campo para actualizar.');
+    }
+
+    const updatedFile = await this.csvUserModel.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedFile) {
+      throw new NotFoundException('Archivo no encontrado');
+    }
+
+    this.logger.log(`Archivo actualizado: ${updatedFile.name}`);
+    return updatedFile;
+  }
+
   async deleteUploadedFileById(id: string): Promise<DeleteResult> {
     const deletedFile = await this.csvUserModel.findByIdAndDelete(id);
     if (!deletedFile) {
